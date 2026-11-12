@@ -6,3 +6,6 @@ xcuserdata/
 .DS_Store
 .env*
 /shots/
+# Generated from Icon/AppIcon.icon by tools/make_icon.sh.
+/Resources/Assets.car
+/Resources/AppIcon.icns
