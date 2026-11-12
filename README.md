@@ -1,5 +1,7 @@
 # MyNotes
 
+Notes, a scroll away. Quick notes when you need them.
+
 MyNotes is a small, local-first notes app for macOS. It gives you a quick place to capture and find plain-text notes, with an optional clipboard history kept on your Mac.
 
 > MyNotes is under active development and is currently built for personal use. The quick-access interaction is inspired by Unclutter; MyNotes is an independent project and is not affiliated with it.
