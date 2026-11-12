@@ -4,10 +4,8 @@ import SwiftUI
 
 /// Screenshot mode for agents.
 ///   APP_STORE=/tmp/test.store APP_SNAPSHOT=/tmp/shots ~/Applications/MyNotes.app/Contents/MacOS/MyNotes
-/// writes <page>-light.png and <page>-dark.png for every sidebar page, and
-/// settings-<tab>-light.png and settings-<tab>-dark.png for every Settings tab, then quits.
-/// Each PNG gets a <page>-<mode>-layout.json with the grid probes (tools/check-layout.swift).
-/// APP_SNAPSHOT_PAGES=all,starred limits the pages. Add "settings" to include Settings.
+/// writes library, Quick Notes, and Settings PNGs in light and dark mode, then quits.
+/// APP_SNAPSHOT_PAGES=all,quick-notes limits which non-settings screens are captured.
 /// Add APP_ACCENT=<id> to see the pages in another accent.
 enum Snapshot {
     static func runIfRequested(model: AppModel, openSettings: OpenSettingsAction) {
@@ -32,10 +30,15 @@ enum Snapshot {
             try? await Task.sleep(for: .seconds(1.5))
             for mode in ["light", "dark"] {
                 NSApp.appearance = NSAppearance(named: mode == "light" ? .aqua : .darkAqua)
-                for page in SidebarItem.allCases where only?.contains(page.rawValue) ?? true {
-                    model.sidebar = page
+                if only == nil || only?.contains("all") == true {
                     try? await Task.sleep(for: .seconds(0.8))
-                    capture(to: "\(dir)/\(page.rawValue)-\(mode).png")
+                    capture(to: "\(dir)/all-\(mode).png")
+                }
+                if only == nil || only?.contains("quick-notes") == true {
+                    model.showQuickNotes()
+                    try? await Task.sleep(for: .seconds(0.8))
+                    capture(to: "\(dir)/quick-notes-\(mode).png", window: model.panelController?.panel)
+                    model.hideQuickNotes()
                 }
             }
             if only == nil || only?.contains("settings") == true {

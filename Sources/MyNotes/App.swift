@@ -31,8 +31,14 @@ struct MyNotesApp: App {
             SidebarCommands()
             ToolbarCommands()
             CommandGroup(replacing: .newItem) {
-                Button("New Item") { model.addItem() }
+                Button("New Note") { model.addNote() }
                     .keyboardShortcut("n")
+            }
+            CommandGroup(after: .newItem) {
+                Button("Show Quick Notes") { model.showQuickNotes() }
+                    .keyboardShortcut("n", modifiers: [.command, .shift])
+                Button("Find Notes") { model.focusSearch() }
+                    .keyboardShortcut("f", modifiers: .command)
             }
         }
 
@@ -52,7 +58,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.activate()
     }
 
-    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
 
     /// The self-test's result becomes the exit code, after a normal quit.
     func applicationWillTerminate(_ notification: Notification) {
@@ -60,8 +66,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 }
 
-/// Where the data lives: ~/Library/Application Support/MyNotes/MyNotes.store
+/// Plain-text notes live directly in the Notes Folder. A separate SwiftData
+/// file stores only richer clipboard-history items; the former MyNotes.store
+/// is deliberately left untouched so older app data is never opened as the
+/// new clipboard schema.
 enum Store {
+    static let folderPreferenceKey = "storage.folderPath"
+
     /// True when APP_STORE points somewhere else (tests, snapshots, seed data).
     static var isOverridden: Bool {
         !(ProcessInfo.processInfo.environment["APP_STORE"] ?? "").isEmpty
@@ -71,16 +82,34 @@ enum Store {
         if let path = ProcessInfo.processInfo.environment["APP_STORE"], !path.isEmpty {
             return URL(fileURLWithPath: path)
         }
-        let dir = URL.applicationSupportDirectory.appending(path: "MyNotes", directoryHint: .isDirectory)
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        return dir.appending(path: "MyNotes.store")
+        return clipboardURL
+    }
+
+    static var folderURL: URL {
+        if isOverridden {
+            let storeURL = url
+            return storeURL.deletingLastPathComponent()
+                .appendingPathComponent(storeURL.lastPathComponent + "-notes", isDirectory: true)
+        }
+        if !isOverridden,
+           let path = UserDefaults.standard.string(forKey: folderPreferenceKey), !path.isEmpty {
+            return URL(fileURLWithPath: path, isDirectory: true)
+        }
+        return URL.applicationSupportDirectory.appending(path: "MyNotes", directoryHint: .isDirectory)
+    }
+
+    static var clipboardURL: URL {
+        folderURL.appending(path: "ClipboardHistory.store")
     }
 
     static func makeContainer() -> ModelContainer {
-        do {
-            return try ModelContainer(for: Item.self, configurations: ModelConfiguration(url: url))
-        } catch {
-            fatalError("Could not open the database at \(url.path): \(error)")
-        }
+        do { return try makeContainer(in: url) }
+        catch { fatalError("Could not open the clipboard history at \(url.path): \(error)") }
+    }
+
+    static func makeContainer(in storeURL: URL) throws -> ModelContainer {
+        try FileManager.default.createDirectory(at: storeURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        return try ModelContainer(for: ClipboardEntry.self,
+                                  configurations: ModelConfiguration(url: storeURL))
     }
 }

@@ -1,11 +1,12 @@
 # MyNotes
 
-A native macOS app in SwiftUI. It runs on this Mac only, with a local
-SwiftData database and no server.
+A native macOS app in SwiftUI. Notes are ordinary `.txt` files in the selected
+folder. Optional clipboard history uses its own local SwiftData database; no
+server is involved.
 
 ## Layout
 
-- `Sources/MyNotes/` the app. `App.swift` has the window, menus, and the database location.
+- `Sources/MyNotes/` the app. `App.swift` has the window, menus, and the optional clipboard-history database location.
 - `Sources/MyNotesKit/` rules and data logic with no SwiftUI. Tests in `Tests/MyNotesKitTests/`.
 - `Package.swift` a Swift package. There is no Xcode project.
 - `build.sh` builds, signs, and installs `~/Applications/MyNotes.app`.
