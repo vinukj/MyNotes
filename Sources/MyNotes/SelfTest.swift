@@ -35,6 +35,7 @@ enum SelfTest {
             check("New Note creates one plain-text note", newNote != nil && model.notes.count == before + 1)
             check("the new note is selected", model.selectedNoteID != nil)
             model.startPanelMonitoring()
+            check("coffee sleep prevention starts off", !model.quickNotesStatus.preventsSleep)
             model.showQuickNotes()
             check("Quick Notes shows without making a second panel", model.panelController?.panel?.isVisible == true)
             if let panel = model.panelController?.panel {
@@ -44,7 +45,16 @@ enum SelfTest {
                 check("Quick Notes dismisses when focus leaves the panel", panel.shouldDismissOnKeyLoss(at: outside))
             }
             model.hideQuickNotes()
+            try? await Task.sleep(for: .milliseconds(500))
             check("Quick Notes hides cleanly", model.panelController?.panel?.isVisible == false)
+
+            let priorCoffeeVisibility = UserDefaults.standard.object(forKey: "quickNotes.status.coffee")
+            model.quickNotesStatus.setPreventsSleep(true)
+            check("manual coffee toggle prevents idle sleep", model.quickNotesStatus.preventsSleep)
+            model.setCoffeeIndicatorVisible(false)
+            check("hiding the coffee indicator releases sleep prevention", !model.quickNotesStatus.preventsSleep)
+            model.setCoffeeIndicatorVisible(priorCoffeeVisibility as? Bool ?? true)
+            if priorCoffeeVisibility == nil { UserDefaults.standard.removeObject(forKey: "quickNotes.status.coffee") }
 
             let clipboard = NSPasteboard(name: NSPasteboard.Name("MyNotesSelfTestClipboard"))
             clipboard.declareTypes([.string], owner: nil)

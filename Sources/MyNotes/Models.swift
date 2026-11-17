@@ -68,6 +68,7 @@ final class AppModel {
         }
     }
     private(set) var panelController: FloatingNotesPanelController?
+    let quickNotesStatus = QuickNotesStatus()
     private var noteStore: TextNoteStore
 
     init(container: ModelContainer) {
@@ -194,6 +195,20 @@ final class AppModel {
     func showQuickNotes() { panelController?.present() }
     func hideQuickNotes() { panelController?.hide() }
     func focusSearch() { searchFocusRequest &+= 1 }
+
+    var coffeeIndicatorVisible: Bool {
+        UserDefaults.standard.object(forKey: "quickNotes.status.coffee") as? Bool ?? true
+    }
+
+    func setCoffeeIndicatorVisible(_ visible: Bool) {
+        UserDefaults.standard.set(visible, forKey: "quickNotes.status.coffee")
+        if !visible { quickNotesStatus.setPreventsSleep(false) }
+    }
+
+    func toggleSleepPrevention() {
+        guard coffeeIndicatorVisible else { return }
+        quickNotesStatus.setPreventsSleep(!quickNotesStatus.preventsSleep)
+    }
 
     var clipboardHistoryEnabled: Bool {
         UserDefaults.standard.object(forKey: "clipboard.historyEnabled") as? Bool ?? false

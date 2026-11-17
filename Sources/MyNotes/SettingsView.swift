@@ -55,11 +55,24 @@ struct GeneralSettings: View {
     @Environment(AppModel.self) private var model
     @AppStorage("gesture.topEdgeEnabled") private var topEdgeGestureEnabled = true
     @AppStorage("clipboard.historyEnabled") private var clipboardHistoryEnabled = false
+    @AppStorage("quickNotes.status.cpu") private var showCPU = true
+    @AppStorage("quickNotes.status.memory") private var showMemory = true
+    @AppStorage("quickNotes.status.gpu") private var showGPU = true
+    @AppStorage("quickNotes.status.coffee") private var showCoffee = true
 
     var body: some View {
         Section("Quick Notes") {
             Toggle("Enable top-edge gesture", isOn: $topEdgeGestureEnabled)
             Text("Move the pointer to the top edge, then scroll down to reveal Quick Notes.")
+                .foregroundStyle(.secondary)
+        }
+        Section("Quick Notes Status") {
+            Toggle("Coffee sleep toggle", isOn: $showCoffee)
+                .onChange(of: showCoffee) { _, visible in model.setCoffeeIndicatorVisible(visible) }
+            Toggle("CPU usage", isOn: $showCPU)
+            Toggle("Memory usage", isOn: $showMemory)
+            Toggle("GPU usage", isOn: $showGPU)
+            Text("Choose which system-wide indicators appear in the Quick Notes header. Hiding Coffee turns sleep prevention off.")
                 .foregroundStyle(.secondary)
         }
         Section("Clipboard History") {

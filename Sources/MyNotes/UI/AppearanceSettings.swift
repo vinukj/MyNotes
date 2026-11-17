@@ -3,6 +3,8 @@ import SwiftUI
 /// Settings > Appearance: the accent color. Light and dark mode follow the Mac.
 struct AppearanceSettings: View {
     @Bindable private var store = ThemeStore.shared
+    @AppStorage("quickNotes.glassLevel") private var glassLevel = 50.0
+    @AppStorage("quickNotes.animationSpeed") private var animationSpeed = "normal"
 
     var body: some View {
         Section {
@@ -22,6 +24,19 @@ struct AppearanceSettings: View {
                         .foregroundStyle(.secondary)
                 }
             }
+        }
+        Section("Quick Notes Panel") {
+            LabeledContent("Glass level", value: "\(Int(glassLevel))%")
+            Slider(value: $glassLevel, in: 0...100, step: 5) {
+                Text("Glass level")
+            }
+            Picker("Show and hide animation", selection: $animationSpeed) {
+                Text("Slow").tag("slow")
+                Text("Normal").tag("normal")
+                Text("Fast").tag("fast")
+            }
+            Text("Controls the Quick Notes panel’s material and show/hide transitions.")
+                .foregroundStyle(.secondary)
         }
     }
 }

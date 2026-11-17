@@ -1,5 +1,53 @@
 # Bug fixes
 
+## 2026-11-16 — Note-list text cannot be selected
+
+**Bug ID**: MYNOTES-NOTE-TEXT-SELECTION
+**Description**: Text shown in note-list rows could not be selected to use the system text actions.
+**Root Cause**: The list labels did not enable text selection; the main list's custom context menu also took precedence over text actions.
+**Fix Applied**: Enabled native text selection for note titles and body previews in both note lists and removed the row-level custom menus that intercepted the system context menu.
+**Areas Addressed**: UI, UX
+**Tests Added**: None; this uses SwiftUI's native selection and context-menu behavior.
+**Boundary Validations**: List previews remain read-only; the editable body continues to use the note's debounced save path.
+**HITL Required**: Yes — drag-select text in both lists and use the system context menu to copy it.
+**Regression Risk**: Low — text-selection gestures may take precedence over row selection when dragging directly across labels.
+
+## 2026-11-16 — Copy action missing from note text selection
+
+**Bug ID**: MYNOTES-SELECTION-COPY-ACTION
+**Description**: Selecting text in an editable note body did not provide an obvious, reliably clickable Copy action.
+**Root Cause**: SwiftUI's `TextEditor` did not expose the selected range to the app; the first AppKit implementation placed its button relative to the selected line and fell back below it when there was no room above.
+**Fix Applied**: Kept the AppKit text view and selection detection, and moved the bold Copy button into the top-left of the note-editor header whenever a non-empty selection exists. This keeps it clear of selected text and provides “Copied” feedback after writing the selection to the clipboard.
+**Areas Addressed**: UI, UX
+**Tests Added**: None; the existing suite and app build pass.
+**Boundary Validations**: Clipboard is only changed after an explicit Copy click; existing note save handling remains in place.
+**HITL Required**: Yes — visually verify the button appears at the editor's top-left, click it, and confirm “Copied” feedback and clipboard contents.
+**Regression Risk**: Low — editor presentation is now hosted by `NSScrollView`/`NSTextView` instead of SwiftUI `TextEditor`.
+
+## 2026-11-17 — OpenClip selection bar not summoned by MyNotes
+
+**Bug ID**: MYNOTES-OPENCLIP-SELECTION-BAR
+**Description**: The user expected OpenClip's action bar to appear as soon as text was selected in a note.
+**Root Cause**: Not established. OpenClip's documented `openclip://` API has no command to show its selection bar or pass it selected text, but that does not explain why OpenClip's own automatic detection did not visibly present the bar.
+**Fix Applied**: Kept MyNotes' own top-left Copy action as the supported fallback. No undocumented URL, synthetic shortcut, or OpenClip setting change was added.
+**Areas Addressed**: UI, UX, integration boundary
+**Tests Added**: None; a real mouse drag in the packaged synthetic verification app confirmed the selected text and MyNotes' top-left Copy button appear and that clicking it updates the button to “Copied.” OpenClip logs show it retrieved the selection from MyNotes, but do not establish whether its action bar was presented.
+**Boundary Validations**: OpenClip reported no per-app rules; its documented command list contains only open-settings, pause, and resume, and the log has no “presentation blocked” entry for the observed selections. Verification used synthetic note data, not the user's notes. The installed MyNotes app signature is valid and its binary contains the selection-copy implementation.
+**HITL Required**: Yes — verify OpenClip's automatic selection monitor in the user's real note and inspect OpenClip's own diagnostics if its bar still does not appear.
+**Regression Risk**: Low — no OpenClip integration code or user configuration was changed; MyNotes' independent Copy action remains available. The cause of OpenClip's missing visible bar is unresolved.
+
+## 2026-11-16 — Quick Notes editor hides the selected note body
+
+**Bug ID**: MYNOTES-QUICK-NOTES-EDITOR-BODY
+**Description**: Quick Notes showed the selected note's title but not its body in the editor.
+**Root Cause**: The editor's `NSTextView` had no connected text storage/layout/container stack; attaching it to the scroll view discarded its initial string.
+**Fix Applied**: Connected an explicit AppKit text system before attaching the editor, then populated the string after attachment.
+**Areas Addressed**: UI
+**Tests Added**: None; verified with seeded synthetic notes in the packaged app.
+**Boundary Validations**: The test used a fresh `/tmp` note store; the user's notes were not used or changed.
+**HITL Required**: No — editor body visibility was confirmed in a synthetic app screenshot.
+**Regression Risk**: Low — note text binding and save behavior are unchanged.
+
 ## 2026-11-12 — Notes fail to save after changing the Notes Folder
 
 **Bug ID**: MYNOTES-NOTE-STORE-OWNERSHIP

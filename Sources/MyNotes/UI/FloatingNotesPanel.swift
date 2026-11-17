@@ -8,6 +8,7 @@ final class FloatingNotesPanelController {
     private weak var model: AppModel?
     private var triggerMonitor: TopEdgeGestureMonitor?
     private(set) var panel: QuickNotesPanel?
+    private var transitionGeneration = 0
 
     init(model: AppModel) {
         self.model = model
@@ -24,13 +25,39 @@ final class FloatingNotesPanelController {
         guard model != nil else { return }
         let panel = panel ?? makePanel()
         self.panel = panel
+        transitionGeneration &+= 1
         position(panel)
+        if panel.isVisible {
+            panel.alphaValue = 1
+            panel.makeKey()
+            model?.quickNotesStatus.startSampling()
+            return
+        }
+        panel.alphaValue = 0
         panel.orderFrontRegardless()
         panel.makeKey()
+        model?.quickNotesStatus.startSampling()
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = animationDuration
+            panel.animator().alphaValue = 1
+        }
     }
 
     func hide() {
-        panel?.orderOut(nil)
+        guard let panel, panel.isVisible else { return }
+        model?.quickNotesStatus.stopSampling()
+        transitionGeneration &+= 1
+        let generation = transitionGeneration
+        NSAnimationContext.runAnimationGroup({ context in
+            context.duration = animationDuration
+            panel.animator().alphaValue = 0
+        }, completionHandler: { [weak self, weak panel] in
+            DispatchQueue.main.async {
+                guard let self, let panel, self.transitionGeneration == generation else { return }
+                panel.orderOut(nil)
+                panel.alphaValue = 1
+            }
+        })
     }
 
     func refreshStore() {
@@ -48,6 +75,7 @@ final class FloatingNotesPanelController {
         panel.isOpaque = false
         panel.backgroundColor = .clear
         panel.hasShadow = true
+        panel.onRequestHide = { [weak self] in self?.hide() }
         let host = NSHostingView(rootView: panelRoot())
         host.sizingOptions = []
         panel.contentView = host
@@ -66,28 +94,38 @@ final class FloatingNotesPanelController {
         let pointer = NSEvent.mouseLocation
         let screen = NSScreen.screens.first(where: { $0.frame.contains(pointer) }) ?? NSScreen.main ?? NSScreen.screens.first
         guard let frame = screen?.visibleFrame else { panel.center(); return }
-        let width = max(720, frame.width - Space.lg * 2)
-        let height: CGFloat = 352
+        let width = min(frame.width, max(240, min(1000, frame.width - Space.lg * 2)))
+        let height = min(CGFloat(352), frame.height)
         panel.setFrame(NSRect(x: frame.minX + (frame.width - width) / 2,
-                              y: frame.maxY - height - Space.sm,
+                              y: frame.maxY - height - min(Space.sm, frame.height - height),
                               width: width,
                               height: height), display: false)
+    }
+
+    private var animationDuration: TimeInterval {
+        switch UserDefaults.standard.string(forKey: "quickNotes.animationSpeed") ?? "normal" {
+        case "slow": 0.36
+        case "fast": 0.12
+        default: 0.22
+        }
     }
 }
 
 @MainActor
 final class QuickNotesPanel: NSPanel {
+    var onRequestHide: (() -> Void)?
+
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { false }
 
     override func cancelOperation(_ sender: Any?) {
-        orderOut(nil)
+        onRequestHide?() ?? orderOut(nil)
     }
 
     override func resignKey() {
         super.resignKey()
         if shouldDismissOnKeyLoss(at: NSEvent.mouseLocation) {
-            orderOut(nil)
+            onRequestHide?() ?? orderOut(nil)
         }
     }
 
@@ -148,6 +186,11 @@ struct QuickNotesPanelView: View {
     @FocusState private var searchIsFocused: Bool
     @State private var showingClipboardHistory = false
     @State private var clipboardSearch = ""
+    @AppStorage("quickNotes.status.cpu") private var showCPU = true
+    @AppStorage("quickNotes.status.memory") private var showMemory = true
+    @AppStorage("quickNotes.status.gpu") private var showGPU = true
+    @AppStorage("quickNotes.status.coffee") private var showCoffee = true
+    @AppStorage("quickNotes.glassLevel") private var glassLevel = 50.0
 
     private var visible: [TextNote] {
         model.notes.filter { NoteSearch.matches(title: $0.title, body: $0.body, query: model.searchText) }
@@ -162,6 +205,7 @@ struct QuickNotesPanelView: View {
                       systemImage: showingClipboardHistory ? "doc.on.clipboard" : "note.text")
                     .font(.headline)
                 Spacer()
+                statusIndicators
                 Button("New Note", systemImage: "plus") { model.addNote() }
                     .labelStyle(.iconOnly)
                     .help("New Note (Command-N)")
@@ -178,11 +222,12 @@ struct QuickNotesPanelView: View {
                 .labelStyle(.iconOnly)
                 .help("Choose where notes are stored")
                 Button("Hide Quick Notes", systemImage: "xmark") {
-                    NSApp.keyWindow?.orderOut(nil)
+                    model.hideQuickNotes()
                 }
                 .labelStyle(.iconOnly)
                 .help("Hide Quick Notes (Escape)")
             }
+            .gridProbe("quick-notes-header", area: "quick-notes")
             if !showingClipboardHistory, !model.unreadableNoteFiles.isEmpty {
                 Label("Skipped \(model.unreadableNoteFiles.count) unreadable .txt file(s)",
                       systemImage: "exclamationmark.triangle")
@@ -202,11 +247,14 @@ struct QuickNotesPanelView: View {
                         List(visible, selection: $model.selectedNoteID) { note in
                             HStack(spacing: Space.xs) {
                                 VStack(alignment: .leading, spacing: Space.xs) {
-                                    Text(note.title.isEmpty ? "Untitled" : note.title).lineLimit(1)
+                                    Text(note.title.isEmpty ? "Untitled" : note.title)
+                                        .lineLimit(1)
+                                        .textSelection(.enabled)
                                     Text(note.body.isEmpty ? "No additional text" : note.body)
                                         .font(.callout)
                                         .foregroundStyle(.secondary)
                                         .lineLimit(2)
+                                        .textSelection(.enabled)
                                 }
                                 Spacer(minLength: 0)
                                 Button("Delete Note", systemImage: "trash", role: .destructive) {
@@ -236,15 +284,67 @@ struct QuickNotesPanelView: View {
                 }
             }
         }
-        .padding(Space.lg)
-        .background(.ultraThinMaterial)
-        .overlay { RoundedRectangle(cornerRadius: Space.md).strokeBorder(.primary.opacity(0.08), lineWidth: 1) }
+        .padding(Space.margin)
+        .background(.ultraThinMaterial.opacity(glassLevel / 100),
+                    in: RoundedRectangle(cornerRadius: Space.xl, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: Space.xl, style: .continuous)
+                .strokeBorder(.primary.opacity(0.08), lineWidth: 1)
+        }
+        .clipShape(RoundedRectangle(cornerRadius: Space.xl, style: .continuous))
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .gridArea("quick-notes")
         .onAppear {
             if model.selectedNoteID == nil { model.selectedNoteID = visible.first?.id }
         }
         .onChange(of: model.searchFocusRequest) { searchIsFocused = true }
         .storageErrorAlert(model: model)
+    }
+
+    @ViewBuilder
+    private var statusIndicators: some View {
+        HStack(spacing: Space.xs) {
+            if showCPU { usageGauge("CPU", symbol: "cpu", value: model.quickNotesStatus.cpuUsage) }
+            if showMemory { usageGauge("Memory", symbol: "memorychip", value: model.quickNotesStatus.memoryUsage) }
+            if showGPU { usageGauge("GPU", symbol: "rectangle.3.group", value: model.quickNotesStatus.gpuUsage) }
+            if showCoffee {
+                Button {
+                    model.toggleSleepPrevention()
+                } label: {
+                    Image(systemName: model.quickNotesStatus.preventsSleep ? "cup.and.saucer.fill" : "cup.and.saucer")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(model.quickNotesStatus.preventsSleep ? Palette.accentText : .secondary)
+                        .frame(width: 28, height: 28)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help(model.quickNotesStatus.preventsSleep ? "Sleep prevention is on" : "Prevent idle sleep")
+                .accessibilityLabel(model.quickNotesStatus.preventsSleep ? "Turn off sleep prevention" : "Prevent idle sleep")
+            }
+        }
+        .padding(.trailing, Space.sm)
+    }
+
+    private func usageGauge(_ title: String, symbol: String, value: Double?) -> some View {
+        let percentage = value.map { min(100, max(0, $0)) }
+        return HStack(spacing: Space.xs) {
+            ZStack {
+                Circle()
+                    .stroke(.quaternary, lineWidth: 2)
+                Circle()
+                    .trim(from: 0, to: CGFloat(percentage ?? 0) / 100)
+                    .stroke(Palette.accent, style: StrokeStyle(lineWidth: 2, lineCap: .round))
+                    .rotationEffect(.degrees(-90))
+                Image(systemName: symbol)
+                    .font(.system(size: 9, weight: .semibold))
+            }
+            .frame(width: 24, height: 24)
+            Text(percentage.map { "\(Int($0.rounded()))%" } ?? "—")
+                .font(.system(size: 11, weight: .medium, design: .rounded).monospacedDigit())
+        }
+        .frame(height: 28)
+        .help(percentage.map { "System-wide \(title) usage: \(Int($0.rounded()))%" } ?? "System-wide \(title) usage unavailable")
+        .accessibilityLabel(percentage.map { "\(title) usage \(Int($0.rounded())) percent" } ?? "\(title) usage unavailable")
     }
 }
 

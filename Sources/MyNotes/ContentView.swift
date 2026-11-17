@@ -1,3 +1,4 @@
+import AppKit
 import SwiftData
 import SwiftUI
 import MyNotesKit
@@ -57,11 +58,13 @@ struct NoteList: View {
                 VStack(alignment: .leading, spacing: Space.xs) {
                     Text(note.title.isEmpty ? "Untitled" : note.title)
                         .lineLimit(1)
+                        .textSelection(.enabled)
                     if !note.body.isEmpty {
                         Text(note.body)
                             .font(.callout)
                             .foregroundStyle(.secondary)
                             .lineLimit(2)
+                            .textSelection(.enabled)
                     }
                 }
                 Spacer(minLength: Space.xs)
@@ -73,11 +76,6 @@ struct NoteList: View {
                 .help("Delete \(note.title)")
             }
             .tag(note.id)
-            .contextMenu {
-                Button("Delete Note", systemImage: "trash", role: .destructive) {
-                    model.deleteNote(note)
-                }
-            }
         }
         .searchable(text: $model.searchText, placement: .toolbar, prompt: "Search Notes")
         .searchFocused($searchIsFocused)
@@ -126,18 +124,32 @@ struct NoteEditor: View {
     @Bindable var note: TextNote
     @FocusState private var titleIsFocused: Bool
     @State private var saveTask: Task<Void, Never>?
+    @State private var selectedText = ""
+    @State private var copiedSelection = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: Space.md) {
-            TextField("Title", text: $note.title)
-                .font(.title2)
-                .textFieldStyle(.plain)
-                .focused($titleIsFocused)
-                .onChange(of: note.title) { scheduleSave() }
-            TextEditor(text: $note.body)
-                .font(.body)
-                .scrollContentBackground(.hidden)
+            HStack(spacing: Space.sm) {
+                if !selectedText.isEmpty {
+                    Button(copiedSelection ? "Copied" : "Copy", systemImage: "doc.on.doc") {
+                        let pasteboard = NSPasteboard.general
+                        pasteboard.clearContents()
+                        copiedSelection = pasteboard.setString(selectedText, forType: .string)
+                    }
+                    .font(.system(size: 13, weight: .bold))
+                    .controlSize(.small)
+                    .help("Copy selected note text")
+                }
+                TextField("Title", text: $note.title)
+                    .font(.title2)
+                    .textFieldStyle(.plain)
+                    .focused($titleIsFocused)
+                    .onChange(of: note.title) { scheduleSave() }
+            }
+            SelectionCopyTextEditor(text: $note.body, selectedText: $selectedText)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .onChange(of: note.body) { scheduleSave() }
+                .onChange(of: selectedText) { copiedSelection = false }
         }
         .padding(Space.xl)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
