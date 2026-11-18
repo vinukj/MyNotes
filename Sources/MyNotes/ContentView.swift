@@ -46,9 +46,12 @@ extension View {
 struct NoteList: View {
     @Environment(AppModel.self) private var model
     @FocusState private var searchIsFocused: Bool
+    @State private var matchingNoteIDs = Set<UUID>()
+    @State private var filterTask: Task<Set<UUID>, Never>?
 
     private var visible: [TextNote] {
-        model.notes.filter { NoteSearch.matches(title: $0.title, body: $0.body, query: model.searchText) }
+        guard !model.searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return model.notes }
+        return model.notes.filter { matchingNoteIDs.contains($0.id) }
     }
 
     var body: some View {
@@ -80,6 +83,8 @@ struct NoteList: View {
         .searchable(text: $model.searchText, placement: .toolbar, prompt: "Search Notes")
         .searchFocused($searchIsFocused)
         .onChange(of: model.searchFocusRequest) { searchIsFocused = true }
+        .task(id: model.noteSearchRevision) { await updateSearchResults() }
+        .onDisappear { filterTask?.cancel() }
         .overlay {
             if visible.isEmpty {
                 ContentUnavailableView(
@@ -100,6 +105,20 @@ struct NoteList: View {
             guard let note = model.notes.first(where: { $0.id == model.selectedNoteID }) else { return }
             model.deleteNote(note)
         }
+    }
+
+    @MainActor
+    private func updateSearchResults() async {
+        filterTask?.cancel()
+        let entries = model.notes.map { NoteSearch.Entry(id: $0.id, title: $0.title, body: $0.body) }
+        let query = model.searchText
+        let task = Task.detached(priority: .userInitiated) {
+            NoteSearch.matchingIDs(in: entries, query: query, cancellationCheck: { Task.isCancelled })
+        }
+        filterTask = task
+        let result = await task.value
+        guard !Task.isCancelled else { return }
+        matchingNoteIDs = result
     }
 }
 

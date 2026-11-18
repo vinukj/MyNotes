@@ -14,7 +14,12 @@ import SwiftUI
 @main
 struct MyNotesApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
-    @State private var model = AppModel(container: Store.makeContainer())
+    @State private var model = AppModel.shared
+
+    private var opensLibraryForAutomation: Bool {
+        let environment = ProcessInfo.processInfo.environment
+        return SelfTest.requested || environment["APP_SEED"] == "1" || environment["APP_SNAPSHOT"] != nil
+    }
 
     var body: some Scene {
         Window("MyNotes", id: "main") {
@@ -27,6 +32,7 @@ struct MyNotesApp: App {
         .modelContainer(model.container)
         .defaultSize(width: 1100, height: 720)
         .windowToolbarStyle(.unified)
+        .defaultLaunchBehavior(opensLibraryForAutomation ? .automatic : .suppressed)
         .commands {
             SidebarCommands()
             ToolbarCommands()
@@ -42,6 +48,12 @@ struct MyNotesApp: App {
             }
         }
 
+        MenuBarExtra("MyNotes", systemImage: "note.text") {
+            MenuBarMenu()
+                .environment(model)
+        }
+        .menuBarExtraStyle(.menu)
+
         Settings {
             SettingsView()
                 .environment(model)
@@ -51,11 +63,25 @@ struct MyNotesApp: App {
     }
 }
 
+private struct MenuBarMenu: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.openWindow) private var openWindow
+    @Environment(\.openSettings) private var openSettings
+
+    var body: some View {
+        Button("Show Quick Notes") { model.showQuickNotes() }
+        Button("Open Notes Library") { openWindow(id: "main") }
+        Button("Settings…") { openSettings() }
+        Divider()
+        Button("Quit MyNotes") { NSApp.terminate(nil) }
+    }
+}
+
+@MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
-        // Started from a terminal, the process is not a foreground app yet.
-        NSApp.setActivationPolicy(.regular)
-        NSApp.activate()
+        NSApp.setActivationPolicy(.accessory)
+        AppModel.shared.startPanelMonitoring()
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }

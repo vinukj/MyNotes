@@ -186,6 +186,8 @@ struct QuickNotesPanelView: View {
     @FocusState private var searchIsFocused: Bool
     @State private var showingClipboardHistory = false
     @State private var clipboardSearch = ""
+    @State private var matchingNoteIDs = Set<UUID>()
+    @State private var filterTask: Task<Set<UUID>, Never>?
     @AppStorage("quickNotes.status.cpu") private var showCPU = true
     @AppStorage("quickNotes.status.memory") private var showMemory = true
     @AppStorage("quickNotes.status.gpu") private var showGPU = true
@@ -193,7 +195,8 @@ struct QuickNotesPanelView: View {
     @AppStorage("quickNotes.glassLevel") private var glassLevel = 50.0
 
     private var visible: [TextNote] {
-        model.notes.filter { NoteSearch.matches(title: $0.title, body: $0.body, query: model.searchText) }
+        guard !model.searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return model.notes }
+        return model.notes.filter { matchingNoteIDs.contains($0.id) }
     }
     private var selected: TextNote? { visible.first { $0.id == model.selectedNoteID } ?? visible.first }
 
@@ -241,9 +244,22 @@ struct QuickNotesPanelView: View {
             } else {
                 HStack(spacing: Space.md) {
                     VStack(spacing: Space.sm) {
-                        TextField("Search Notes", text: $model.searchText)
-                            .textFieldStyle(.roundedBorder)
-                            .focused($searchIsFocused)
+                        HStack(spacing: Space.xs) {
+                            TextField("Search Notes", text: $model.searchText)
+                                .textFieldStyle(.roundedBorder)
+                                .focused($searchIsFocused)
+                            if !model.searchText.isEmpty {
+                                Button {
+                                    model.searchText = ""
+                                } label: {
+                                    Image(systemName: "xmark.circle.fill")
+                                        .foregroundStyle(.secondary)
+                                }
+                                .buttonStyle(.plain)
+                                .help("Clear search")
+                                .accessibilityLabel("Clear search")
+                            }
+                        }
                         List(visible, selection: $model.selectedNoteID) { note in
                             HStack(spacing: Space.xs) {
                                 VStack(alignment: .leading, spacing: Space.xs) {
@@ -297,8 +313,24 @@ struct QuickNotesPanelView: View {
         .onAppear {
             if model.selectedNoteID == nil { model.selectedNoteID = visible.first?.id }
         }
+        .task(id: model.noteSearchRevision) { await updateSearchResults() }
+        .onDisappear { filterTask?.cancel() }
         .onChange(of: model.searchFocusRequest) { searchIsFocused = true }
         .storageErrorAlert(model: model)
+    }
+
+    @MainActor
+    private func updateSearchResults() async {
+        filterTask?.cancel()
+        let entries = model.notes.map { NoteSearch.Entry(id: $0.id, title: $0.title, body: $0.body) }
+        let query = model.searchText
+        let task = Task.detached(priority: .userInitiated) {
+            NoteSearch.matchingIDs(in: entries, query: query, cancellationCheck: { Task.isCancelled })
+        }
+        filterTask = task
+        let result = await task.value
+        guard !Task.isCancelled else { return }
+        matchingNoteIDs = result
     }
 
     @ViewBuilder

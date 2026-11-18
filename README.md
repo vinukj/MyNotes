@@ -9,6 +9,9 @@ MyNotes is a small, local-first notes app for macOS. It gives you a quick place 
 ## Features
 
 - Reveal a compact, floating Quick Notes panel by moving the pointer to the top edge and scrolling down.
+- Run MyNotes from the menu bar instead of keeping a Dock icon, with actions for Quick Notes, the Notes Library, Settings, and Quit.
+- Show optional whole-Mac CPU, memory, and best-effort GPU usage in the Quick Notes header, plus a manual coffee toggle to prevent idle sleep while it is active.
+- Tune the floating panel’s glass level and show/hide animation speed in Appearance settings.
 - Create, edit, search, browse, and delete notes.
 - Read and write ordinary UTF-8 `.txt` files in a folder you choose.
 - Search note titles and contents from the library or Quick Notes panel.
@@ -46,10 +49,13 @@ The install script replaces the existing `~/Applications/MyNotes.app` bundle whe
 
 ## Using MyNotes
 
-- **Quick Notes gesture:** Move the pointer to the top edge of a display, then scroll down. The gesture can be turned off in Settings. You can also use **Show Quick Notes** from the app menu or press **Command-Shift-N**.
+- **Open MyNotes:** Click its menu-bar icon to show Quick Notes, open the Notes Library or Settings, or quit. MyNotes stays available in the menu bar without a Dock icon.
+- **Quick Notes gesture:** Move the pointer to the top edge of a display, then scroll down. The gesture can be turned off in Settings. You can also use **Show Quick Notes** from the menu-bar menu or press **Command-Shift-N**.
+- **Quick Notes status:** Choose the CPU, memory, GPU, and coffee indicators in **Settings → General**. The coffee control is manual and prevents idle sleep only while enabled; hiding it in Settings releases that assertion. GPU availability depends on Mac hardware and system telemetry.
+- **Tune the panel:** Adjust the glass level and show/hide animation speed in **Settings → Appearance**.
 - **Create a note:** Choose **New Note** or press **Command-N**. A note's title becomes its filename; its text is the file contents.
-- **Search notes:** Search matches both note titles and note contents. Press **Command-F** to focus search.
-- **Browse notes:** Open the main MyNotes window to see the full notes library.
+- **Search notes:** Search matches note titles and contents locally; entering a URL searches note text and does not open or fetch the address. Use the **×** button to clear Quick Notes search. Press **Command-F** to focus search.
+- **Browse notes:** Choose **Open Notes Library** from the MyNotes menu-bar menu to see the full notes library.
 - **Choose storage:** Open **Settings → Storage → Choose Folder…**. MyNotes reads and writes top-level `.txt` files in that folder. Changing the folder switches the active library; it does not move files from the previous folder.
 - **Use clipboard history:** Open the clipboard view from Quick Notes and enable history when prompted, or turn it on in **Settings → General**. Click an item to copy it back to the system clipboard. The clipboard gear opens storage settings.
 - **Delete:** Use a note's trash button or the selected-note Delete command. Deleting a note removes its `.txt` file from the notes folder. Clipboard items can be removed individually or cleared from the clipboard view/settings.

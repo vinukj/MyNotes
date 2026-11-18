@@ -1,5 +1,17 @@
 # Bug fixes
 
+## 2026-11-18 — MyNotes menu-bar launch and Quick Notes search
+
+**Bug ID**: MYNOTES-MENUBAR-QUICK-SEARCH
+**Description**: The Library window and Dock icon were required to keep MyNotes available, and entering a URL in Quick Notes search could stall the interface; search also lacked a visible clear control.
+**Root Cause**: Gesture monitoring started from the Library view lifecycle, while both note lists synchronously searched every note body during view updates.
+**Fix Applied**: Added a SwiftUI menu-bar menu for Quick Notes, Notes Library, Settings, and Quit; moved gesture-monitor startup to app launch and suppressed the Library window on ordinary launch. Search matching now runs in a cancellable background task, and Quick Notes shows an accessible clear-search button.
+**Areas Addressed**: App lifecycle, UI, performance
+**Tests Added**: A 2,000-note literal URL-search regression test.
+**Boundary Validations**: Search remains local literal title/body matching; URL text is never opened or fetched. Notes and clipboard storage are unchanged.
+**HITL Required**: Yes — verify the menu-bar item, top-edge gesture, Library/Settings actions, and search behavior in the packaged macOS app.
+**Regression Risk**: Medium — the menu-bar-only activation policy and suppressed launch-window behavior need a real macOS launch and gesture check.
+
 ## 2026-11-16 — Note-list text cannot be selected
 
 **Bug ID**: MYNOTES-NOTE-TEXT-SELECTION

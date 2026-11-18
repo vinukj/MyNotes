@@ -49,12 +49,17 @@ final class ClipboardEntry {
 @MainActor
 @Observable
 final class AppModel {
+    static let shared = AppModel(container: Store.makeContainer())
+
     var container: ModelContainer
     var notes: [TextNote]
     var storageError: String?
     var unreadableNoteFiles: [String] = []
     var selectedNoteID: UUID?
-    var searchText = ""
+    var searchText = "" {
+        didSet { noteSearchRevision &+= 1 }
+    }
+    private(set) var noteSearchRevision = 0
     var focusTitleForNoteID: UUID?
     var searchFocusRequest = 0
     @ObservationIgnored private var clipboardTimer: Timer?
@@ -95,6 +100,7 @@ final class AppModel {
             searchText = ""
             let note = try noteStore.create()
             notes.insert(note, at: 0)
+            noteSearchRevision &+= 1
             storageError = nil
             selectedNoteID = note.id
             focusTitleForNoteID = note.id
@@ -118,6 +124,7 @@ final class AppModel {
                 if $0.updatedAt != $1.updatedAt { return $0.updatedAt > $1.updatedAt }
                 return $0.title.localizedStandardCompare($1.title) == .orderedAscending
             }
+            noteSearchRevision &+= 1
             storageError = nil
         } catch {
             storageError = "Could not save the note: \(error.localizedDescription)"
@@ -134,6 +141,7 @@ final class AppModel {
             try TextNoteStore.owning(note: note).delete(note)
             deletedNoteIDs.insert(note.id)
             notes.removeAll { $0.id == note.id }
+            noteSearchRevision &+= 1
             if selectedNoteID == note.id { selectedNoteID = nil }
             storageError = nil
         } catch {
@@ -145,6 +153,7 @@ final class AppModel {
         do {
             let result = try noteStore.loadDetailed()
             notes = result.notes
+            noteSearchRevision &+= 1
             unreadableNoteFiles = result.unreadableFiles
             if let selectedNoteID, !notes.contains(where: { $0.id == selectedNoteID }) {
                 self.selectedNoteID = nil
@@ -169,6 +178,7 @@ final class AppModel {
         UserDefaults.standard.set(folder.path, forKey: Store.folderPreferenceKey)
         noteStore = nextStore
         notes = nextNotes
+        noteSearchRevision &+= 1
         unreadableNoteFiles = loadResult.unreadableFiles
         container = nextContainer
         storageError = nil
