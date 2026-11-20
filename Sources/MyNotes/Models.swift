@@ -74,6 +74,7 @@ final class AppModel {
     }
     private(set) var panelController: FloatingNotesPanelController?
     let quickNotesStatus = QuickNotesStatus()
+    let meetingCapture = MeetingCaptureCoordinator()
     private var noteStore: TextNoteStore
 
     init(container: ModelContainer) {
@@ -129,6 +130,15 @@ final class AppModel {
         } catch {
             storageError = "Could not save the note: \(error.localizedDescription)"
         }
+    }
+
+    @discardableResult
+    func createMeetingNote(title: String, body: String) -> TextNote? {
+        guard let note = addNote() else { return nil }
+        note.title = title
+        note.body = body
+        saveNote(note)
+        return note
     }
 
     func deleteNote(_ note: TextNote) {

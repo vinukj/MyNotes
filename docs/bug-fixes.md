@@ -1,5 +1,41 @@
 # Bug fixes
 
+## 2026-11-20 — Reset meeting capture icon tint
+
+**Bug ID**: MYNOTES-MEETING-CAPTURE-ICON-TINT
+**Description**: The Quick Notes meeting icon stayed theme-colored when inactive and used bright state colors that looked out of place beside the other toolbar indicators.
+**Root Cause**: A state-specific tint was applied after capture completed, and the inactive icon inherited the theme accent.
+**Fix Applied**: Use the neutral secondary tint when capture is inactive and white while recording, paused, or transcribing; keep the icon shape and recording pulse state-driven. Completed/failed/idle states return to neutral automatically.
+**Areas Addressed**: UI/UX
+**Tests Added**: None; this is a presentation-only state-to-tint change.
+**Boundary Validations**: Confirmed the capture button reads the shared meeting state; closing the capture window during recording does not falsely clear the active indicator.
+**HITL Required**: Yes — verify neutral tint when idle/completed, white while recording/paused/transcribing, and neutral again after processing completes.
+**Regression Risk**: Low — affects only the Quick Notes meeting button tint; capture state and behavior are unchanged.
+
+## 2026-11-20 — Speech asset status and meeting recording indicator
+
+**Bug ID**: MYNOTES-MEETING-SPEECH-ASSET-STATUS
+**Description**: Meeting Capture continued to show “Download Speech Assets” after local macOS Speech assets were installed, and the meeting icon gave no clear indication that recording was active.
+**Root Cause**: The download action was rendered unconditionally; the capture window and menu-bar item used static, uncolored symbols.
+**Fix Applied**: Refresh asset availability from `SpeechTranscriber`/`AssetInventory` when Meeting Capture opens and before recording. Show “Speech assets ready” when installed, show download only when supported assets are missing, and report downloading/unsupported states. Reflect recording state with a pulsing waveform and update the persistent menu-bar symbol for recording and paused states.
+**Areas Addressed**: UI/UX, Speech asset state
+**Tests Added**: No isolated framework test; validate with a macOS build and interactive asset/recording status check.
+**Boundary Validations**: Status is re-queried from macOS on view entry and before Start, rather than trusting a cached “downloaded” flag. The recording gate requires a compatible local transcriber asset to be installed.
+**HITL Required**: Yes — with assets installed, confirm the download action is gone and the ready indicator appears; start, pause, resume, and stop to check icon colors and pulse.
+**Regression Risk**: Low — capture state and asset checks are unchanged; only the state indication is clarified.
+
+## 2026-11-20 — Meeting capture crashes when microphone audio arrives
+
+**Bug ID**: MYNOTES-MEETING-CAPTURE-ACTOR-ISOLATION
+**Description**: Starting a meeting capture crashed MyNotes as soon as AVAudioEngine delivered microphone audio.
+**Root Cause**: Swift 6.2's default main-actor isolation applied to the tap closure created inside `MeetingCaptureCoordinator`, but AVAudioEngine invokes tap callbacks on its realtime audio thread.
+**Fix Applied**: Moved audio-tap installation into the existing nonisolated `AudioCaptureSink`; the callback now invokes only its thread-safe sink and no longer enters the UI actor.
+**Areas Addressed**: Audio capture, concurrency
+**Tests Added**: Existing 12-test suite passes and recompiles the app; the crash report from build `202611200935` identified `_swift_task_checkIsolatedSwift` in the previous tap closure.
+**Boundary Validations**: Pause/stop still detach the tap before releasing the engine and sink. A live microphone capture must still be verified interactively.
+**HITL Required**: Yes — start a short recording, verify the app stays open and the timer advances, then stop; transcription availability is a separate post-recording requirement.
+**Regression Risk**: Low — the change only moves callback creation to the existing thread-safe audio sink; microphone permission and transcription behavior are unchanged.
+
 ## 2026-11-18 — MyNotes menu-bar launch and Quick Notes search
 
 **Bug ID**: MYNOTES-MENUBAR-QUICK-SEARCH
@@ -119,3 +155,14 @@
 **Boundary Validations**: Verified the chosen folder path and that it contains 99 top-level `.txt` files using file metadata only; note contents were not read.
 **HITL Required**: Yes — open MyNotes and confirm the 99 notes appear and a new note saves in the selected folder.
 **Regression Risk**: Low — installation replaces only the application bundle and does not migrate or rewrite note or clipboard data.
+## 2026-11-20 — Make local Speech assets installable
+
+**Bug ID**: Meeting transcription asset setup
+**Description**: Stop and Transcribe failed when macOS Speech assets were missing, with no way in MyNotes to request installation.
+**Root Cause**: MyNotes only inspected installed `SpeechTranscriber` locales and did not request Speech Recognition authorization or expose Apple's asset installation request.
+**Fix Applied**: Added an explicit Download Speech Assets action, Speech Recognition usage text and permission request, supported-locale selection, and a start-time installed-asset check so the user is not left with a recording that cannot be transcribed.
+**Areas Addressed**: UI/UX/Config
+**Tests Added**: `SelfTest.swift` locale preference and English fallback checks.
+**Boundary Validations**: Unsupported, already-installed, already-downloading, missing-locale, and download-failure states are surfaced.
+**HITL Required**: Yes — grant Speech Recognition permission, download the OS asset, and record a short sample.
+**Regression Risk**: Low — meeting capture checks Speech permission and assets before microphone capture; unrelated note storage remains untouched.

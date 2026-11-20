@@ -8,7 +8,7 @@ import SwiftUI
 /// APP_SNAPSHOT_PAGES=all,quick-notes limits which non-settings screens are captured.
 /// Add APP_ACCENT=<id> to see the pages in another accent.
 enum Snapshot {
-    static func runIfRequested(model: AppModel, openSettings: OpenSettingsAction) {
+    static func runIfRequested(model: AppModel, openSettings: OpenSettingsAction, openWindow: OpenWindowAction) {
         let env = ProcessInfo.processInfo.environment
         guard let dir = env["APP_SNAPSHOT"], !dir.isEmpty else { return }
         // Snapshots never run against the real database.
@@ -39,6 +39,15 @@ enum Snapshot {
                     try? await Task.sleep(for: .seconds(0.8))
                     capture(to: "\(dir)/quick-notes-\(mode).png", window: model.panelController?.panel)
                     model.hideQuickNotes()
+                }
+            }
+            if only == nil || only?.contains("all") == true || only?.contains("meeting-capture") == true {
+                openWindow(id: "meeting-capture")
+                for mode in ["light", "dark"] {
+                    NSApp.appearance = NSAppearance(named: mode == "light" ? .aqua : .darkAqua)
+                    try? await Task.sleep(for: .seconds(0.8))
+                    let meeting = NSApp.windows.first { $0.isVisible && $0.title == "Meeting Capture" }
+                    capture(to: "\(dir)/meeting-capture-\(mode).png", window: meeting)
                 }
             }
             if only == nil || only?.contains("settings") == true {

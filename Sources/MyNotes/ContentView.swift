@@ -6,6 +6,7 @@ import MyNotesKit
 struct ContentView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.openSettings) private var openSettings
+    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         NavigationSplitView {
@@ -24,7 +25,7 @@ struct ContentView: View {
             model.startPanelMonitoring()
             SeedData.insertIfRequested(into: model)
             SelfTest.runIfRequested(model: model)
-            Snapshot.runIfRequested(model: model, openSettings: openSettings)
+            Snapshot.runIfRequested(model: model, openSettings: openSettings, openWindow: openWindow)
         }
         .storageErrorAlert(model: model)
     }
@@ -143,6 +144,7 @@ struct NoteEditor: View {
     @Bindable var note: TextNote
     @FocusState private var titleIsFocused: Bool
     @State private var saveTask: Task<Void, Never>?
+    @State private var autoCopyTask: Task<Void, Never>?
     @State private var selectedText = ""
     @State private var copiedSelection = false
 
@@ -151,9 +153,7 @@ struct NoteEditor: View {
             HStack(spacing: Space.sm) {
                 if !selectedText.isEmpty {
                     Button(copiedSelection ? "Copied" : "Copy", systemImage: "doc.on.doc") {
-                        let pasteboard = NSPasteboard.general
-                        pasteboard.clearContents()
-                        copiedSelection = pasteboard.setString(selectedText, forType: .string)
+                        copySelection(selectedText)
                     }
                     .font(.system(size: 13, weight: .bold))
                     .controlSize(.small)
@@ -168,7 +168,16 @@ struct NoteEditor: View {
             SelectionCopyTextEditor(text: $note.body, selectedText: $selectedText)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .onChange(of: note.body) { scheduleSave() }
-                .onChange(of: selectedText) { copiedSelection = false }
+                .onChange(of: selectedText) { _, text in
+                    copiedSelection = false
+                    autoCopyTask?.cancel()
+                    guard !text.isEmpty else { return }
+                    autoCopyTask = Task { @MainActor in
+                        try? await Task.sleep(for: .seconds(1))
+                        guard !Task.isCancelled, selectedText == text else { return }
+                        copySelection(text)
+                    }
+                }
         }
         .padding(Space.xl)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -185,8 +194,13 @@ struct NoteEditor: View {
         }
         .onDisappear {
             saveTask?.cancel()
+            autoCopyTask?.cancel()
             model.saveNote(note)
         }
+    }
+
+    private func copySelection(_ text: String) {
+        copiedSelection = NoteSelectionClipboard.copy(text)
     }
 
     private func scheduleSave() {

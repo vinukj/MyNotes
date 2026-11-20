@@ -1,6 +1,15 @@
 import AppKit
 import SwiftUI
 
+@MainActor
+enum NoteSelectionClipboard {
+    static func copy(_ text: String, to pasteboard: NSPasteboard = .general) -> Bool {
+        guard !text.isEmpty else { return false }
+        pasteboard.clearContents()
+        return pasteboard.setString(text, forType: .string)
+    }
+}
+
 struct SelectionCopyTextEditor: NSViewRepresentable {
     @Binding var text: String
     @Binding var selectedText: String

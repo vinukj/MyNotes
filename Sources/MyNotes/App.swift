@@ -21,6 +21,17 @@ struct MyNotesApp: App {
         return SelfTest.requested || environment["APP_SEED"] == "1" || environment["APP_SNAPSHOT"] != nil
     }
 
+    private var meetingIsRecording: Bool { model.meetingCapture.state == .recording }
+
+    private var menuBarSymbol: String {
+        switch model.meetingCapture.state {
+        case .recording: "waveform.circle.fill"
+        case .paused: "pause.circle.fill"
+        case .processing: "waveform"
+        default: "note.text"
+        }
+    }
+
     var body: some Scene {
         Window("MyNotes", id: "main") {
             ContentView()
@@ -36,6 +47,22 @@ struct MyNotesApp: App {
         .commands {
             SidebarCommands()
             ToolbarCommands()
+            CommandGroup(replacing: .undoRedo) {
+                Button("Undo") { NSApp.sendAction(Selector(("undo:")), to: nil, from: nil) }
+                    .keyboardShortcut("z", modifiers: .command)
+                Button("Redo") { NSApp.sendAction(Selector(("redo:")), to: nil, from: nil) }
+                    .keyboardShortcut("z", modifiers: [.command, .shift])
+            }
+            CommandGroup(replacing: .pasteboard) {
+                Button("Cut") { NSApp.sendAction(#selector(NSText.cut(_:)), to: nil, from: nil) }
+                    .keyboardShortcut("x", modifiers: .command)
+                Button("Copy") { NSApp.sendAction(#selector(NSText.copy(_:)), to: nil, from: nil) }
+                    .keyboardShortcut("c", modifiers: .command)
+                Button("Paste") { NSApp.sendAction(#selector(NSText.paste(_:)), to: nil, from: nil) }
+                    .keyboardShortcut("v", modifiers: .command)
+                Button("Select All") { NSApp.sendAction(#selector(NSText.selectAll(_:)), to: nil, from: nil) }
+                    .keyboardShortcut("a", modifiers: .command)
+            }
             CommandGroup(replacing: .newItem) {
                 Button("New Note") { model.addNote() }
                     .keyboardShortcut("n")
@@ -48,7 +75,15 @@ struct MyNotesApp: App {
             }
         }
 
-        MenuBarExtra("MyNotes", systemImage: "note.text") {
+        Window("Meeting Capture", id: "meeting-capture") {
+            MeetingCaptureView()
+                .environment(model)
+                .themed()
+        }
+        .defaultSize(width: 720, height: 560)
+        .windowResizability(.contentSize)
+
+        MenuBarExtra("MyNotes", systemImage: menuBarSymbol) {
             MenuBarMenu()
                 .environment(model)
         }
@@ -81,6 +116,7 @@ private struct MenuBarMenu: View {
 final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
+        MeetingCaptureCoordinator.cleanupStaleAudio()
         AppModel.shared.startPanelMonitoring()
     }
 
@@ -88,6 +124,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// The self-test's result becomes the exit code, after a normal quit.
     func applicationWillTerminate(_ notification: Notification) {
+        AppModel.shared.meetingCapture.terminate()
         if SelfTest.requested { exit(SelfTest.exitCode) }
     }
 }

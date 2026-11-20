@@ -50,7 +50,8 @@ enum SelfTest {
 
             let priorCoffeeVisibility = UserDefaults.standard.object(forKey: "quickNotes.status.coffee")
             model.quickNotesStatus.setPreventsSleep(true)
-            check("manual coffee toggle prevents idle sleep", model.quickNotesStatus.preventsSleep)
+            check("manual coffee toggle prevents idle display and system sleep", model.quickNotesStatus.preventsSleep)
+            check("coffee duration starts at zero", model.quickNotesStatus.sleepPreventionDuration >= 0)
             model.setCoffeeIndicatorVisible(false)
             check("hiding the coffee indicator releases sleep prevention", !model.quickNotesStatus.preventsSleep)
             model.setCoffeeIndicatorVisible(priorCoffeeVisibility as? Bool ?? true)
@@ -99,6 +100,10 @@ enum SelfTest {
             } else {
                 check("password-manager clipboard items are skipped", false)
             }
+            let selectionPasteboard = NSPasteboard(name: NSPasteboard.Name("MyNotesSelectionSelfTestClipboard"))
+            check("selected note text copies to the pasteboard",
+                  NoteSelectionClipboard.copy("Selected note words", to: selectionPasteboard)
+                    && selectionPasteboard.string(forType: .string) == "Selected note words")
             model.clearClipboardHistory()
             check("clipboard history can be cleared", ((try? context.fetch(FetchDescriptor<ClipboardEntry>())) ?? []).isEmpty)
 
@@ -123,6 +128,28 @@ enum SelfTest {
                       !FileManager.default.fileExists(atPath: note.fileURL.path))
             }
             check("empty titles have a friendly fallback", ItemTitle.clean("  \n") == "New Note")
+
+            let meetingTitle = MeetingMetadata(startedAt: Date(timeIntervalSince1970: 1_795_180_200),
+                                               title: "Planning").noteTitle
+            let english = Locale(identifier: "en-US")
+            let hindi = Locale(identifier: "hi-IN")
+            check("meeting transcription prefers a supported system locale",
+                  MeetingCaptureCoordinator.preferredLocale(current: hindi, supported: [english, hindi])?.identifier == hindi.identifier)
+            check("meeting transcription falls back to supported English",
+                  MeetingCaptureCoordinator.preferredLocale(current: Locale(identifier: "fr-FR"), supported: [hindi, english])?.identifier == english.identifier)
+            let meetingBody = "# \(meetingTitle)\n\n## Transcript\n\n[00:00] We agreed to review the launch plan.\n"
+            if let meeting = model.createMeetingNote(title: meetingTitle, body: meetingBody) {
+                let reloadedMeeting = (try? TextNoteStore(directoryURL: Store.folderURL).load())?
+                    .first { $0.title == meetingTitle }
+                check("meeting capture creates one ordinary text note", meeting.fileURL.pathExtension == "txt")
+                check("meeting agenda timestamp and transcript survive reload",
+                      reloadedMeeting?.title == meetingTitle && reloadedMeeting?.body == meetingBody)
+                model.deleteNote(meeting)
+                check("meeting test note is removed from the isolated store",
+                      !FileManager.default.fileExists(atPath: meeting.fileURL.path))
+            } else {
+                check("meeting capture creates one ordinary text note", false, model.storageError ?? "creation failed")
+            }
 
             print(failures == 0 ? "SELFTEST PASS \(count) checks" : "SELFTEST FAIL \(failures) of \(count) checks")
             finish(code: failures == 0 ? 0 : 1)

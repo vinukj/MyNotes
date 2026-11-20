@@ -10,13 +10,68 @@ final class QuickNotesStatus {
     private(set) var memoryUsage: Double?
     private(set) var gpuUsage: Double?
     private(set) var preventsSleep = false
+    private(set) var sleepPreventionDuration: TimeInterval = 0
     @ObservationIgnored private var timer: Timer?
     @ObservationIgnored private var previousCPUTicks: [UInt32]?
     @ObservationIgnored private var sleepAssertion: IOPMAssertionID = 0
+    @ObservationIgnored private var displayAssertion: IOPMAssertionID = 0
+    @ObservationIgnored private var sleepPreventionStartedAt: Date?
+    @ObservationIgnored private var panelIsSampling = false
 
     func startSampling() {
-        guard timer == nil else { return }
+        panelIsSampling = true
         sample()
+        startTimerIfNeeded()
+    }
+
+    func stopSampling() {
+        panelIsSampling = false
+        previousCPUTicks = nil
+        if !preventsSleep { stopTimer() }
+    }
+
+    func setPreventsSleep(_ enabled: Bool) {
+        guard enabled else {
+            releaseAssertions()
+            preventsSleep = false
+            sleepPreventionStartedAt = nil
+            sleepPreventionDuration = 0
+            if !panelIsSampling { stopTimer() }
+            return
+        }
+        guard !preventsSleep else { return }
+
+        var systemAssertion: IOPMAssertionID = 0
+        let systemResult = IOPMAssertionCreateWithName(
+            kIOPMAssertionTypePreventUserIdleSystemSleep as CFString,
+            IOPMAssertionLevel(kIOPMAssertionLevelOn),
+            "MyNotes Coffee Toggle" as CFString,
+            &systemAssertion
+        )
+        guard systemResult == kIOReturnSuccess else { return }
+
+        var displayAssertion: IOPMAssertionID = 0
+        let displayResult = IOPMAssertionCreateWithName(
+            kIOPMAssertionTypePreventUserIdleDisplaySleep as CFString,
+            IOPMAssertionLevel(kIOPMAssertionLevelOn),
+            "MyNotes Coffee Toggle" as CFString,
+            &displayAssertion
+        )
+        guard displayResult == kIOReturnSuccess else {
+            IOPMAssertionRelease(systemAssertion)
+            return
+        }
+
+        sleepAssertion = systemAssertion
+        self.displayAssertion = displayAssertion
+        sleepPreventionStartedAt = .now
+        sleepPreventionDuration = 0
+        preventsSleep = true
+        startTimerIfNeeded()
+    }
+
+    private func startTimerIfNeeded() {
+        guard timer == nil else { return }
         let timer = Timer(timeInterval: 1.5, repeats: true) { [weak self] _ in
             Task { @MainActor [weak self] in self?.sample() }
         }
@@ -25,36 +80,27 @@ final class QuickNotesStatus {
         RunLoop.main.add(timer, forMode: .common)
     }
 
-    func stopSampling() {
+    private func stopTimer() {
         timer?.invalidate()
         timer = nil
-        previousCPUTicks = nil
     }
 
-    func setPreventsSleep(_ enabled: Bool) {
-        guard enabled else {
-            if sleepAssertion != 0 { IOPMAssertionRelease(sleepAssertion) }
-            sleepAssertion = 0
-            preventsSleep = false
-            return
-        }
-        guard !preventsSleep else { return }
-        var assertion: IOPMAssertionID = 0
-        let result = IOPMAssertionCreateWithName(
-            kIOPMAssertionTypePreventUserIdleSystemSleep as CFString,
-            IOPMAssertionLevel(kIOPMAssertionLevelOn),
-            "MyNotes Coffee Toggle" as CFString,
-            &assertion
-        )
-        guard result == kIOReturnSuccess else { return }
-        sleepAssertion = assertion
-        preventsSleep = true
+    private func releaseAssertions() {
+        if sleepAssertion != 0 { IOPMAssertionRelease(sleepAssertion) }
+        if displayAssertion != 0 { IOPMAssertionRelease(displayAssertion) }
+        sleepAssertion = 0
+        displayAssertion = 0
     }
 
     private func sample() {
-        sampleCPU()
-        sampleMemory()
-        gpuUsage = Self.gpuUtilization()
+        if panelIsSampling {
+            sampleCPU()
+            sampleMemory()
+            gpuUsage = Self.gpuUtilization()
+        }
+        if let sleepPreventionStartedAt {
+            sleepPreventionDuration = Date.now.timeIntervalSince(sleepPreventionStartedAt)
+        }
     }
 
     private func sampleCPU() {

@@ -183,6 +183,7 @@ final class TopEdgeGestureMonitor {
 struct QuickNotesPanelView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.openSettings) private var openSettings
+    @Environment(\.openWindow) private var openWindow
     @FocusState private var searchIsFocused: Bool
     @State private var showingClipboardHistory = false
     @State private var clipboardSearch = ""
@@ -200,6 +201,22 @@ struct QuickNotesPanelView: View {
     }
     private var selected: TextNote? { visible.first { $0.id == model.selectedNoteID } ?? visible.first }
 
+    private var meetingCaptureSymbol: String {
+        switch model.meetingCapture.state {
+        case .recording: "waveform.circle.fill"
+        case .paused: "pause.circle.fill"
+        case .processing: "waveform"
+        default: "waveform"
+        }
+    }
+
+    private var meetingCaptureIsActive: Bool {
+        switch model.meetingCapture.state {
+        case .recording, .paused, .processing: true
+        default: false
+        }
+    }
+
     var body: some View {
         @Bindable var model = model
         VStack(spacing: Space.sm) {
@@ -212,6 +229,15 @@ struct QuickNotesPanelView: View {
                 Button("New Note", systemImage: "plus") { model.addNote() }
                     .labelStyle(.iconOnly)
                     .help("New Note (Command-N)")
+                Button("Meeting Capture", systemImage: meetingCaptureSymbol) {
+                    model.hideQuickNotes()
+                    openWindow(id: "meeting-capture")
+                }
+                .labelStyle(.iconOnly)
+                .tint(meetingCaptureIsActive ? .white : .secondary)
+                .symbolEffect(.pulse, options: .repeating,
+                              isActive: model.meetingCapture.state == .recording)
+                .help("Record and transcribe a meeting locally")
                 Button(showingClipboardHistory ? "Show Notes" : "Clipboard History",
                        systemImage: showingClipboardHistory ? "note.text" : "doc.on.clipboard") {
                     showingClipboardHistory.toggle()
@@ -352,6 +378,13 @@ struct QuickNotesPanelView: View {
                 .buttonStyle(.plain)
                 .help(model.quickNotesStatus.preventsSleep ? "Sleep prevention is on" : "Prevent idle sleep")
                 .accessibilityLabel(model.quickNotesStatus.preventsSleep ? "Turn off sleep prevention" : "Prevent idle sleep")
+                if model.quickNotesStatus.preventsSleep {
+                    Text(coffeeDuration)
+                        .font(.system(size: 11, weight: .medium, design: .rounded).monospacedDigit())
+                        .foregroundStyle(.secondary)
+                        .help("Display and system idle sleep prevented for \(coffeeDuration)")
+                        .accessibilityLabel("Coffee has been on for \(coffeeDuration)")
+                }
             }
         }
         .padding(.trailing, Space.sm)
@@ -377,6 +410,11 @@ struct QuickNotesPanelView: View {
         .frame(height: 28)
         .help(percentage.map { "System-wide \(title) usage: \(Int($0.rounded()))%" } ?? "System-wide \(title) usage unavailable")
         .accessibilityLabel(percentage.map { "\(title) usage \(Int($0.rounded())) percent" } ?? "\(title) usage unavailable")
+    }
+
+    private var coffeeDuration: String {
+        let seconds = max(0, Int(model.quickNotesStatus.sleepPreventionDuration))
+        return String(format: "%02d:%02d:%02d", seconds / 3_600, (seconds / 60) % 60, seconds % 60)
     }
 }
 
